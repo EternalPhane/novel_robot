@@ -10,9 +10,10 @@ import sys
 import threading
 import traceback
 import urllib.parse
-import requests
+
 from bs4 import BeautifulSoup
 from bs4 import SoupStrainer
+import requests
 
 __author__ = 'EternalPhane'
 __copyright__ = 'Copyright (c) 2016 EternalPhane'
@@ -25,7 +26,7 @@ __status__ = 'Prototype'
 
 def main(argv):
     """Main function."""
-    global HEADERS, VERBOSE, SITES, SITE_ID
+    global HEADERS, VERBOSE, HELP, SITES, SITE_ID, TITLE
     HEADERS = {
         'Connection': 'Keep-Alive',
         'Accept': 'text/html,application/xhtml+xml,*/*',
@@ -37,12 +38,17 @@ def main(argv):
         )
     }
     VERBOSE = False
+    HELP = False
     SITE_ID = 0
+    TITLE = None
     process_argv(argv)
+    if HELP or TITLE == None:
+        display_help()
+        return
     with open('sites.list', 'r') as file:
         SITES = json.load(file)
     site = SITES[SITE_ID]
-    title = '剑道真解'
+    title = TITLE
 
     global RE_BAIDU_URL, RE_URL, RE_TITLE, RE_CONTENTS, RE_CHAPTER
     RE_BAIDU_URL = re.compile(
@@ -50,8 +56,8 @@ def main(argv):
     )
     RE_URL = re.compile(r'^(http[s]?://%s|[^h])[^()<>]+$' % (site))
     RE_TITLE = re.compile(r'^[《 ]?%s[》 ]?' % (title))
-    RE_CONTENTS = re.compile(r'.*?(目录|阅读).*?')
-    RE_CHAPTER = re.compile(r'[第]?[序一二三四五六七八九十百千0-9]+[章节 ].+?')
+    RE_CONTENTS = re.compile(r'.*?(目录|阅读|章节).*?')
+    RE_CHAPTER = re.compile(r'[第]?[序一二三四五六七八九十百千0-9]+[章节 ].*?')
 
     global LIST_TAG_TITLE
     LIST_TAG_TITLE = ['p', 'span', 'h1', 'h2', 'h3']
@@ -69,7 +75,7 @@ def main(argv):
     contents = get_contents(contents_url['url'], contents_url['html'])
     print('capturing...')
     capture_to_file(title, contents)
-    print('finished! path: %s.txt' % (os.path.dirname(__file__) + title))
+    print('finished! path: %s.txt' % (os.path.dirname(__file__) + '\\' + title))
 
 
 def process_argv(argv):
@@ -77,14 +83,30 @@ def process_argv(argv):
     argc = len(argv)
     i = 1
     while i < argc:
-        if argv[i] == '-v':
+        if argv[i] in ['-v', '--verbose']:
             global VERBOSE
             VERBOSE = True
-        if argv[i] == '--site_id':
+        elif argv[i] == '--site_id':
             i += 1
             global SITE_ID
             SITE_ID = int(argv[i])
+        elif argv[i] in ['-h', '--help']:
+            global HELP
+            HELP = True
+        else:
+            global TITLE
+            TITLE = argv[i]
         i += 1
+
+
+def display_help():
+    print(
+        """Usage: novel_robot.py [options] title
+
+Options:
+  -h, --help     Display this information
+  -v, --verbose  Show verbose log
+  --site_id <id> Search on website in 'sites.list' whoes index is <id>""")
 
 
 def get_request(url, rash=False):
@@ -131,8 +153,8 @@ def locate_contents(site, title, max_depth=3):
       max_depth: An int defines the max depth for dfs.
 
     Returns:
-      A dict contains the url, html source and encoding of specific novel`s contents page, None if
-      specific novel not found.
+      A dict contains the url and html source of specific novel`s contents page, None if specific
+      novel not found.
     """
     url = requests.head(
         'https://www.baidu.com/s',
@@ -333,7 +355,7 @@ def capture_to_file(title, contents, max_threads=50):
             file.write('\r\n')
             soup = contents[finished][1]
             for line in soup.stripped_strings:
-                if len(line) < 4:
+                if len(line) < 4 or re.search(RE_CHAPTER, line):
                     continue
                 file.write(line)
                 file.write('\r\n')
